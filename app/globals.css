@@ -1,0 +1,10 @@
+@import "tailwindcss";
+
+@theme inline {
+  --font-sans: "Inter Variable", ui-sans-serif, system-ui, sans-serif;
+}
+
+html { color-scheme: light; }
+body { font-feature-settings: "cv11", "ss01"; }
+.tabular-nums, table, td { font-variant-numeric: tabular-nums; }
+.recharts-wrapper *:focus { outline: none; }
