@@ -36,7 +36,7 @@ export const TOOL_DECLARATIONS = [
   {
     name: "get_pipeline_diagnostics",
     description:
-      "Open opportunities, stalled deals (proposal_sent/negotiating idle longer than threshold), owner workload, value at risk, and post-event open deals. Optional filters by stage or owner.",
+      "Open opportunities, stalled deals (proposal_sent/negotiating idle longer than threshold), owner workload, value at risk, and post-event open deals. Optional filters by stage or owner. negotiating_stalled_by_owner, negotiating_stalled_totals and filtered_negotiating_stalled are finished totals (proposed_value_inr, min_days_in_stage, max_days_in_stage). Copy them exactly; do not add the rows.",
     parametersJsonSchema: {
       type: "object",
       properties: {
@@ -326,12 +326,33 @@ export async function runTool(name: string, args: Record<string, unknown>, state
         opps = opps.filter((x) => (x.owner_name ?? "").toLowerCase().includes(o));
       }
       const open = opps.filter((o) => (OPEN_STAGES as readonly string[]).includes(o.stage));
+      const finished = (rows: { proposed_value_inr: number; days_in_stage: number }[]) => {
+        const days = rows.map((r) => r.days_in_stage);
+        return {
+          count: rows.length,
+          proposed_value_inr: rows.reduce((a, r) => a + r.proposed_value_inr, 0),
+          min_days_in_stage: days.length ? Math.min(...days) : null,
+          max_days_in_stage: days.length ? Math.max(...days) : null,
+        };
+      };
+      const negotiatingStalled = s.stalled.filter((o) => o.stage === "negotiating");
+      const byOwner = new Map<string, typeof negotiatingStalled>();
+      for (const o of negotiatingStalled) {
+        const owner = o.owner_name ?? "Unassigned";
+        byOwner.set(owner, [...(byOwner.get(owner) ?? []), o]);
+      }
       return {
         result: {
           as_of: asOf,
           phase: s.phase,
           stalled_days_threshold: stalledDays,
           filters: { stage: args.stage_filter ?? null, owner: args.owner_name ?? null },
+          totals_are_final: "Copy proposed_value_inr, min_days_in_stage and max_days_in_stage from negotiating_stalled_by_owner and filtered_negotiating_stalled. Do not add the opportunity rows and do not state a different day range.",
+          negotiating_stalled_totals: finished(negotiatingStalled),
+          negotiating_stalled_by_owner: [...byOwner.entries()]
+            .map(([owner, rows]) => ({ owner, ...finished(rows) }))
+            .sort((a, b) => b.proposed_value_inr - a.proposed_value_inr),
+          filtered_negotiating_stalled: finished(opps.filter((o) => o.is_stalled && o.stage === "negotiating")),
           matching_opportunities: opps.length,
           open_count: open.length,
           open_value_inr: open.reduce((a, o) => a + o.proposed_value_inr, 0),

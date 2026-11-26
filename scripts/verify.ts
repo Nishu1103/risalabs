@@ -112,6 +112,25 @@ async function main() {
   check("tool get_executive_summary confirmed cash = 2000000", kp.confirmed_cash_inr, 2000000);
   const miss = (await runTool("check_data_availability", { topic: "CAC ad spend" }, s)) as { result: { available: boolean } };
   check("tool check_data_availability(CAC) → not available", miss.result.available, false);
+  const riya = (await runTool("get_pipeline_diagnostics", { as_of_date: "2025-04-20", owner_name: "Riya Kapoor" }, s)) as {
+    result: {
+      negotiating_stalled_by_owner: { owner: string; proposed_value_inr: number; min_days_in_stage: number; max_days_in_stage: number }[];
+      filtered_negotiating_stalled: { proposed_value_inr: number; min_days_in_stage: number; max_days_in_stage: number };
+    };
+  };
+  const riyaRow = riya.result.negotiating_stalled_by_owner.find((o) => o.owner === "Riya Kapoor");
+  check(
+    "Riya stalled negotiating = ₹3,60,000 over 30–47 days",
+    [
+      riyaRow?.proposed_value_inr,
+      riyaRow?.min_days_in_stage,
+      riyaRow?.max_days_in_stage,
+      riya.result.filtered_negotiating_stalled.proposed_value_inr,
+      riya.result.filtered_negotiating_stalled.min_days_in_stage,
+      riya.result.filtered_negotiating_stalled.max_days_in_stage,
+    ],
+    [360000, 30, 47, 360000, 30, 47],
+  );
   const calc = (await runTool("calculate", { expression: "2000000 * 0.8 - 150000" }, s)) as { result: { value: number } };
   check("tool calculate", calc.result.value, 1450000);
 

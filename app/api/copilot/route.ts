@@ -8,9 +8,10 @@ export const dynamic = "force-dynamic";
 export const maxDuration = 60;
 
 const MAX_STEPS = 8;
-// Live check against the project key (Nov 2026): gemini-2.5-flash and gemini-2.0-flash
-// return 404 ("no longer available"). gemini-3-flash-preview and gemini-3.1-flash-lite respond.
-const DEFAULT_MODELS = "gemini-3.1-flash-lite,gemini-3-flash-preview";
+const BUDGET_MS = 48_000;
+// gemini-3.8-flash is the default. Preview, then lite, are fallbacks when it 503s or 429s.
+// gemini-2.5-flash and gemini-2.0-flash 404 for this key ("no longer available").
+const DEFAULT_MODELS = "gemini-3.8-flash,gemini-3-flash-preview,gemini-3.1-flash-lite";
 
 function isQuota(e: unknown) {
   const m = String((e as Error)?.message ?? e);
@@ -33,7 +34,7 @@ The user is currently viewing snapshot date ${asOf} (end of day, Asia/Kolkata). 
 
 GROUNDING RULES — non-negotiable
 1. Every number you state must come from a tool result in THIS turn. Call tools first; never answer from memory or earlier turns, because the data may have been edited since.
-2. Never do arithmetic in your head. If you need a sum, difference, ratio or percentage not already in a tool result, call \`calculate\`. Do not state a total unless that exact number came back from a tool or from \`calculate\`.
+2. Never do arithmetic in your head, and never add deal rows yourself. If you need a sum, difference, ratio or percentage that is not already a finished total, call \`calculate\`. When a tool result includes negotiating_stalled_by_owner, negotiating_stalled_totals or filtered_negotiating_stalled, copy that object's proposed_value_inr, min_days_in_stage and max_days_in_stage exactly, with the owner name on that row. Do not state a total or a day range unless those exact integers came back from one of those objects or from \`calculate\`.
 3. Before answering about any metric you have not seen in a tool result (CAC, ad spend, open rates, venue cost, ROI, attendee impact, probability, etc.) call \`check_data_availability\`. If it is not in the data, say so plainly, do NOT estimate it, and offer the closest sourced proxy.
 4. Separate evidence from inference. Structure substantive answers as:
    **Answer** (1–3 sentences) → **Evidence** (bullets with exact figures + which tool) → **Assumptions / limits** (only if any) → **Recommended next step**.
@@ -71,7 +72,7 @@ export const POST = handle(async (req: Request) => {
 
   // The SDK defaults to API v1. gemini-3-flash-preview is served on v1beta (v1 returns 404).
   const ai = new GoogleGenAI({ apiKey, apiVersion: "v1beta", httpOptions: { timeout: 45000 } });
-  // First model the key can call wins. Flash Lite is the default (free-tier preview is 5 requests/minute).
+  // Unset GEMINI_MODEL to use DEFAULT_MODELS. A set value replaces the whole list.
   const candidates = (process.env.GEMINI_MODEL || DEFAULT_MODELS).split(",").map((m) => m.trim()).filter(Boolean);
   let model = candidates[0];
   const contents: Content[] = msgs.map((m) => ({ role: m.role === "assistant" ? "model" : "user", parts: [{ text: m.content }] }));
@@ -80,8 +81,15 @@ export const POST = handle(async (req: Request) => {
   const trace: { name: string; args: Record<string, unknown>; result: unknown }[] = [];
   const pending: PendingAction[] = [];
   let reply = "";
+  const startedAt = Date.now();
+  const abort = new AbortController();
+  const budgetTimer = setTimeout(() => abort.abort(), BUDGET_MS);
+  const remaining = () => BUDGET_MS - (Date.now() - startedAt);
+  const budgetHit = () => abort.signal.aborted || remaining() <= 1500;
 
+  try {
   for (let step = 0; step < MAX_STEPS; step++) {
+    if (budgetHit() || remaining() < 1500) break;
     const request = (m: string) =>
       ai.models.generateContent({
         model: m,
@@ -89,12 +97,15 @@ export const POST = handle(async (req: Request) => {
         config: {
           systemInstruction: systemPrompt(asOf),
           tools: [{ functionDeclarations: TOOL_DECLARATIONS as unknown as never[] }],
+          abortSignal: abort.signal,
+          httpOptions: { timeout: Math.max(1500, Math.min(45000, remaining() - 500)) },
         },
       });
     let res;
     try {
       res = await request(model);
     } catch (e) {
+      if (budgetHit()) break;
       if (isAuthFailure(e))
         return bad(
           "Gemini rejected GEMINI_API_KEY (401). Put a valid key from https://aistudio.google.com/apikey in .env.local or in Vercel environment variables, then restart.",
@@ -104,17 +115,18 @@ export const POST = handle(async (req: Request) => {
       const next = step === 0 && isModelUnavailable(e) ? candidates.slice(candidates.indexOf(model) + 1) : [];
       if (!next.length) {
         if (isQuota(e)) return bad("Gemini rate limit reached. Wait about a minute and ask again.", 429);
-        if (/504|DEADLINE_EXCEEDED|Deadline expired/i.test(String((e as Error)?.message ?? e)))
-          return bad("Gemini timed out before answering. Ask again.", 504);
+        if (budgetHit()) break;
         throw e;
       }
       let lastErr = e;
       for (const m of next) {
+        if (budgetHit() || remaining() < 1500) break;
         try {
           res = await request(m);
           model = m;
           break;
         } catch (e2) {
+          if (budgetHit()) break;
           if (isAuthFailure(e2))
             return bad(
               "Gemini rejected GEMINI_API_KEY (401). Put a valid key from https://aistudio.google.com/apikey in .env.local or in Vercel environment variables, then restart.",
@@ -125,9 +137,8 @@ export const POST = handle(async (req: Request) => {
         }
       }
       if (!res) {
+        if (budgetHit()) break;
         if (isQuota(lastErr)) return bad("Gemini rate limit reached. Wait about a minute and ask again.", 429);
-        if (/504|DEADLINE_EXCEEDED|Deadline expired/i.test(String((lastErr as Error)?.message ?? lastErr)))
-          return bad("Gemini timed out before answering. Ask again.", 504);
         throw lastErr;
       }
     }
@@ -156,7 +167,13 @@ export const POST = handle(async (req: Request) => {
     contents.push({ role: "user", parts: responses });
     if (step === MAX_STEPS - 2) state = await loadState(); // refresh for long chains
   }
-  if (!reply) reply = "I gathered the data but could not finish the analysis in time. Please ask a narrower question.";
+  } finally {
+    clearTimeout(budgetTimer);
+  }
+  if (!reply)
+    reply = trace.length
+      ? "I gathered the data but hit the 48 second limit before the write-up. Use the finished totals in Evidence (proposed_value_inr, min_days_in_stage, max_days_in_stage). Do not add the rows yourself."
+      : "Gemini timed out before answering. Ask again.";
 
   q(`insert into copilot_log (question, tools_called) values ($1, $2)`, [
     msgs[msgs.length - 1].content.slice(0, 1000),

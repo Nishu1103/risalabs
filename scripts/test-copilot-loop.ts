@@ -60,15 +60,17 @@ async function main() {
   const after = (await q(`select count(*)::int n from tasks`))[0].n;
   check("no task written without user confirmation", after === before);
   check("final reply text", j.reply.includes("SC01"));
-  check("default model is gemini-3.1-flash-lite", j.model === "gemini-3.1-flash-lite" && modelsHit[0] === "gemini-3.1-flash-lite", JSON.stringify(modelsHit));
+  check("default model is gemini-3.8-flash", j.model === "gemini-3.8-flash" && modelsHit[0] === "gemini-3.8-flash", JSON.stringify(modelsHit));
+  const prompt = JSON.stringify(sent[0] ?? "");
+  check("prompt forbids re-adding stalled totals", prompt.includes("negotiating_stalled_by_owner") && prompt.includes("never add deal rows yourself"));
 
   // Fallback: first model 404s → route retries on the next model in the chain.
   step = 3; // jump straight to the final text answer
-  rejectModel = "gemini-3.1-flash-lite";
+  rejectModel = "gemini-3.8-flash";
   modelsHit.length = 0;
   const r2 = await POST(new Request("http://x/api/copilot", { method: "POST", body: JSON.stringify({ messages: [{ role: "user", content: "hi" }] }) }));
   const j2 = await r2.json();
-  check("falls back to gemini-3-flash-preview when lite is unavailable", r2.status === 200 && j2.model === "gemini-3-flash-preview", JSON.stringify(j2));
+  check("falls back to gemini-3-flash-preview when 3.8-flash is unavailable", r2.status === 200 && j2.model === "gemini-3-flash-preview", JSON.stringify(j2));
   console.log(fail ? `\n${fail} failed` : "\nall copilot loop checks passed");
   await getPool().end();
   process.exit(fail ? 1 : 0);

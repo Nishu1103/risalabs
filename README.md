@@ -13,7 +13,7 @@ A working command center for a college-fest sponsorship team. It has snapshot-ac
 | Live Demo (Vercel) | `<your Vercel URL>` |
 | 3-Slide Strategy Deck (PDF) | `<link / PDF>` |
 | Stack | Next.js 15 (App Router, TS strict) · Tailwind 4 · Recharts · Postgres (Supabase) via `pg` · Google Gemini function calling (`@google/genai`) |
-| Tests | `npm run verify` (55 ground-truth assertions) · `npm run test:copilot` (tool-calling loop against a mocked Gemini) · `npm run build` (0 TS / ESLint errors) |
+| Tests | `npm run verify` (56 ground-truth assertions) · `npm run test:copilot` (tool-calling loop against a mocked Gemini) · `npm run build` (0 TS / ESLint errors) |
 
 ---
 
@@ -29,7 +29,7 @@ Start at http://localhost:3000 (or the Vercel URL) on snapshot **20 Apr 2025**.
 2. **Data hygiene check.** Click **Data hygiene · 6 dupes removed**. The modal lists six identical import-retry copies, each raw 2 / kept 1: interactions `SI00110`, `SI00019`, `SI00001`; qualification `BQ0003`; opportunity history `OH00015`, `OH00001`. Sheet totals: interactions 953 → 950, qualification 434 → 433, opportunity history 230 → 228.
 3. **Live mutation and persistence.** Open **Pipeline**, open **Beardo (O001)**, and log a **₹1,00,000** payment. Refresh. Overview **cash collected** moves from ₹0 to ₹1,00,000. Reported confirmed cash stays ₹20,00,000. Scrub to 19 Apr and the payment is not in that snapshot.
 4. **AI Copilot epistemic honesty.** Open **Ask Copilot** and ask, one at a time: *"How much cash is in the bank?"*, *"Did Beardo's activation increase attendees?"*, and *"What is our CAC?"*. Open **Evidence** on each answer. Bank cash is user-logged receipts (₹0 until step 3), separate from ₹20.00L reported cash and ₹2.40L in-kind. Beardo is an observational link to Creator Partners, not an attendance effect. CAC is refused: spend is not in the dataset.
-5. **Closed-loop action and reset.** Ask the copilot to create a task for **Riya Kapoor**. Nothing is written until you click **Confirm & create task**. The task then appears on `/tasks` with an AI badge. Click **Reset to original dataset** and enter reset token `nishant`. Cash collected returns to ₹0, confirmed partnerships to 24, opportunities to 58, and the extra task is gone. The four seed tasks come back.
+5. **Closed-loop action and reset.** Ask the copilot to create a task for **Riya Kapoor**. Nothing is written until you click **Confirm & create task**. The task then appears on `/tasks` with an AI badge. Click **Reset to original dataset** and leave the token blank. Cash collected returns to ₹0, confirmed partnerships to 24, opportunities to 58, and the extra task is gone. The four seed tasks come back. `RESET_TOKEN` is unset so reviewers can reset. If you later set that variable, type the token in the dialog; the button sends it as `x-reset-token`.
 
 ---
 
@@ -105,7 +105,7 @@ Campaign decisions on the default thresholds in `lib/analytics.ts` (`Scale` if c
 
 The system prompt enforces: numbers only from tool results in the current turn; arithmetic only via `calculate`; `check_data_availability` before any unseen metric; an Answer → Evidence → Assumptions → Next step structure; no causal claims; budgets always labelled as assumptions. Each answer shows an expandable **Evidence** panel with every tool call and its JSON result. Follow-ups work because conversation history is replayed, but numbers are re-fetched every turn, so the copilot reflects edits immediately.
 
-**Model**: `gemini-3.1-flash-lite` by default, with automatic fallback to `gemini-3-flash-preview` on API `v1beta`. A live call with this project's key returns 404 for `gemini-2.5-flash` and `gemini-2.0-flash` ("no longer available"). The preview model is limited to 5 free-tier requests per minute, so a 429 or a 504 falls through to the next model, or returns that HTTP status instead of 500. Override with `GEMINI_MODEL` (comma-separated preference list).
+**Model**: `gemini-3.8-flash` by default, then `gemini-3-flash-preview`, then `gemini-3.1-flash-lite`, on API `v1beta`. Leave `GEMINI_MODEL` unset so this chain is used. A live call with this project's key returns 404 for `gemini-2.5-flash` and `gemini-2.0-flash` ("no longer available"). The whole copilot request stops at 48 seconds and returns the tool results it already has, instead of running into the platform's 60 second limit. A 429 or a 504 on the first step falls through to the next model, or returns that HTTP status instead of 500.
 
 ### Tested edge cases
 
@@ -118,7 +118,7 @@ The system prompt enforces: numbers only from tool results in the current turn; 
 | Change a deal in Pipeline, then ask again | The answer reflects the edit (state is reloaded on every request) |
 | Scrub to 2025-02-28 and ask about targets | Launch plan (40/20), 8 confirmed; nothing from March/April |
 
-`npm run test:copilot` runs the real route and the real SDK against a mocked Gemini endpoint. It verifies multi-step tool calls, matching `functionResponse` IDs, grounded tool output (SC01 = 224 attempts, 0 confirmed, Kill), no task written without confirmation, the default model (`gemini-3.1-flash-lite`), and fallback to `gemini-3-flash-preview` on a 404.
+`npm run test:copilot` runs the real route and the real SDK against a mocked Gemini endpoint. It verifies multi-step tool calls, matching `functionResponse` IDs, grounded tool output (SC01 = 224 attempts, 0 confirmed, Kill), no task written without confirmation, the default model (`gemini-3.8-flash`), and fallback to `gemini-3-flash-preview` on a 404.
 
 ## 6. Detailed calculations and prioritization
 
@@ -194,11 +194,11 @@ npm run dev                       # http://localhost:3000
 
 **Supabase**: create a free project → Project → Connect → copy the **Transaction pooler** URI (port 6543) into `DATABASE_URL`. Then run `npm run seed` from your machine, or paste `supabase/schema.sql` into the SQL editor and press "Reset to original dataset" in the app.
 
-**Gemini**: free key at https://aistudio.google.com/apikey → `GEMINI_API_KEY`. Leave `GEMINI_MODEL` at `gemini-3.1-flash-lite,gemini-3-flash-preview`.
+**Gemini**: free key at https://aistudio.google.com/apikey → `GEMINI_API_KEY`. Leave `GEMINI_MODEL` unset. The code default is `gemini-3.8-flash`, then `gemini-3-flash-preview`, then `gemini-3.1-flash-lite`.
 
 **Vercel**: import the repo → add `DATABASE_URL`, `GEMINI_API_KEY`, and optionally `GEMINI_MODEL` and `RESET_TOKEN` → deploy. `next.config.ts` sets `outputFileTracingRoot` and traces `data/Sponsor Dataset.xlsx` into `/api/reset`, so reset works on serverless.
 
-**Reset token**: the local demo sets `RESET_TOKEN=nishant`. The reset dialog asks for it and sends `x-reset-token`. Leave the env var empty only if the demo should reset with no token.
+**Reset**: leave `RESET_TOKEN` empty so a reviewer can reset with the token field blank. The dialog still sends `x-reset-token` when a token is typed, and the API rejects a wrong token when the variable is set.
 
 ## 8. Tools, plans, and what was reused, modified, and verified
 
@@ -209,8 +209,8 @@ RISA's ask: name the tools and plans, link the sources, and say what was reused,
 | Next.js 15.5, React 19, Tailwind 4, Recharts | Open source | App shell, pages, charts | **Reused** the framework, Tailwind, and Recharts. **Modified** into the snapshot UI, pipeline, campaigns, and tasks. **Verified** with `npx tsc --noEmit`, `npm run lint`, and `npm run build` (exit 0) plus the reviewer clicks in the 2-minute guide. |
 | Supabase Postgres + `pg` | Free tier, transaction pooler port 6543 | System of record | **Reused** Supabase and `node-postgres`. **Modified** `supabase/schema.sql` for append-only histories, payments, tasks, and hygiene logs. **Verified** by `npm run seed` and `npm run verify` against the live database (180 brands, 270 contacts, 58 opportunities, 6 hygiene rows). |
 | Vercel | Hobby / free tier | Hosting | **Reused** the Next.js deploy path. **Modified** `next.config.ts` so the tracing root is this repo and the xlsx is included in the reset function. **Verified** by a production `next build` whose reset trace contains `Sponsor Dataset.xlsx`. |
-| Google AI Studio / Gemini API (`@google/genai`) | Free tier | Copilot function calling | **Reused** the SDK. **Modified** the client to API `v1beta`, default model `gemini-3.1-flash-lite`, fallback `gemini-3-flash-preview`. **Verified live**: `gemini-2.5-flash` and `gemini-2.0-flash` return 404 ("no longer available"); preview is 5 requests/minute, so 429 and 504 fall through or return that status. Six live questions (bank receipts, Beardo causality, missing CAC, task proposal, cash after a ₹1,50,000 payment, reset back to baseline) were answered from tool traces. |
-| Claude and Cursor | AI pair-programming | Code, tests, and this README | **Reused** as a drafting partner only. **Modified** by hand: business logic, SQL, and dataset math are in `lib/analytics.ts`, `lib/dataset.ts`, and `strategy/model.py`. **Verified** independently by `scripts/verify.ts` (55/55), a pandas cross-check of the same xlsx, `npm run test:copilot`, and 60 live HTTP checks (CRUD, history versioning, as-of isolation, bad dates → 400, reset without token → 401). |
+| Google AI Studio / Gemini API (`@google/genai`) | Free tier | Copilot function calling | **Reused** the SDK. **Modified** the client to API `v1beta`. Default model is `gemini-3.8-flash`, then `gemini-3-flash-preview`, then `gemini-3.1-flash-lite`. Leave `GEMINI_MODEL` unset. **Verified live**: `gemini-2.5-flash` and `gemini-2.0-flash` return 404 ("no longer available"). A 429 or 504 on the first step falls through. The route stops at 48 seconds and returns the tool results it already has. |
+| Claude and Cursor | AI pair-programming | Code, tests, and this README | **Reused** as a drafting partner only. **Modified** by hand: business logic, SQL, and dataset math are in `lib/analytics.ts`, `lib/dataset.ts`, and `strategy/model.py`. **Verified** independently by `scripts/verify.ts` (56/56), a pandas cross-check of the same xlsx, `npm run test:copilot`, and 60 live HTTP checks (CRUD, history versioning, as-of isolation, bad dates → 400, reset without token → 401). |
 | ExcelJS | Open source | Read `Sponsor Dataset.xlsx` | **Reused** to parse the workbook. **Modified** so naive Excel times are read as IST. **Verified** by the dedupe counts in `verify.ts` (953/950, 434/433, 230/228). |
 
 ## 9. Verification and live QA
@@ -218,13 +218,13 @@ RISA's ask: name the tools and plans, link the sources, and say what was reused,
 | Check | Result |
 |---|---|
 | `npx tsc --noEmit`, `npm run lint`, `npm run build` | Exit 0. Production build traces `data/Sponsor Dataset.xlsx` into `/api/reset`. |
-| `npm run verify` | **55/55**. Ground truth on 20 Apr 2025, Feb 28 launch plan with 8 confirmed and zero March/April leakage, 14 Mar launch vs 15 Mar revised, in-memory mutation that does not leak into 19 Apr, and copilot tools (`calculate`, CAC unavailable). |
-| `npm run test:copilot` | Pass. Mocked multi-step tool loop, matching function-response IDs, SC01 = 224 attempts / 0 confirmed / Kill, no task written, default `gemini-3.1-flash-lite`, fallback to `gemini-3-flash-preview` on 404. |
-| Live QA | **60** HTTP checks: opportunity history appends and stays invisible on the day before `effective_date`; a ₹1,00,000 payment on O001 persists in cash collected; campaigns, interactions, brands, and tasks CRUD; invalid JSON and impossible dates return 400; reset without the token returns 401 and with the token restores cash ₹0, 24 confirmed, 58 opportunities, 60 qualified. **6** live Gemini calls on `gemini-3.1-flash-lite` covered the channel gap (24/28, cold = 0 deals and 87% of attempts), bank receipts (₹0 vs ₹20.00L reported cash and ₹2.40L in-kind), Beardo with no causal attendee claim, CAC refusal, a Riya Kapoor task that stayed pending until confirm, and ₹1,50,000 collected after that payment was logged. |
+| `npm run verify` | **56/56**. Ground truth on 20 Apr 2025, Feb 28 launch plan with 8 confirmed and zero March/April leakage, 14 Mar launch vs 15 Mar revised, in-memory mutation that does not leak into 19 Apr, copilot tools (`calculate`, CAC unavailable), and Riya Kapoor's stalled negotiating book at ₹3,60,000 over 30–47 days. |
+| `npm run test:copilot` | Pass. Mocked multi-step tool loop, matching function-response IDs, SC01 = 224 attempts / 0 confirmed / Kill, no task written, default `gemini-3.8-flash`, fallback to `gemini-3-flash-preview` on 404. |
+| Live QA | **60** HTTP checks: opportunity history appends and stays invisible on the day before `effective_date`; a ₹1,00,000 payment on O001 persists in cash collected; campaigns, interactions, brands, and tasks CRUD; invalid JSON and impossible dates return 400; with `RESET_TOKEN` unset, reset restores cash ₹0, 24 confirmed, 58 opportunities, 60 qualified (a wrong token returns 401 only when that variable is set). **6** live Gemini calls on `gemini-3.1-flash-lite` (before the default moved to `gemini-3.8-flash`) covered the channel gap (24/28, cold = 0 deals and 87% of attempts), bank receipts (₹0 vs ₹20.00L reported cash and ₹2.40L in-kind), Beardo with no causal attendee claim, CAC refusal, a Riya Kapoor task that stayed pending until confirm, and ₹1,50,000 collected after that payment was logged. |
 
 ## 10. Known limitations
 
-- Single-tenant demo: no auth, so anyone with the link can edit. Set `RESET_TOKEN` so reset requires the token. The UI sends it from the reset dialog.
+- Single-tenant demo: no auth, so anyone with the link can edit or reset. Leave `RESET_TOKEN` empty for reviewers. If you set it, the reset dialog sends `x-reset-token`.
 - Campaign attribution is the originating campaign recorded on the opportunity, which is an association, not causation.
 - The funnel stages are independent brand populations, not a strictly nested cohort, as the source guide warns.
 - Budgets and the strategy's collection rates, haircuts, and attempt volumes are assumptions. The source contains no spend or payment data. City articles in section 6 are not model inputs.
