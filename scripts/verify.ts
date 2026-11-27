@@ -10,6 +10,7 @@ import { getPool } from "../lib/db";
 import { loadDataset } from "../lib/dataset";
 import { loadState, type DbState } from "../lib/state";
 import { runTool } from "../lib/copilot-tools";
+import { strategyPlan } from "../lib/strategy-plan";
 
 let pass = 0;
 let fail = 0;
@@ -105,11 +106,47 @@ async function main() {
   check("mutation: negotiating 8→7", m.stages.find((x) => x.stage === "negotiating")?.count, 7);
   check("mutation: cash collected before fest = ₹2L", m.kpis.cash_collected_before_event_inr, 200000);
   check("mutation does not leak into Apr 19 snapshot", computeSnapshot(mutated, "2025-04-19").kpis.confirmed_partnerships, 24);
+  const partial: DbState = structuredClone(s);
+  partial.payments.push(
+    { payment_id: 1, opportunity_id: "O001", amount_inr: 100000, received_at: "2025-04-05T12:00:00+05:30", reference: "P1" },
+    { payment_id: 2, opportunity_id: "O001", amount_inr: 50000, received_at: "2025-04-06T12:00:00+05:30", reference: "P2" },
+  );
+  const p = computeSnapshot(partial, "2025-04-20");
+  const o001 = p.opportunities.find((o) => o.opportunity_id === "O001")!;
+  check(
+    "partial payments: O001 collected ₹1,50,000, outstanding ₹50,000; book outstanding ₹18,50,000",
+    [p.kpis.cash_collected_inr, o001.cash_collected_inr, o001.confirmed_value_inr - o001.cash_collected_inr, p.kpis.cash_uncollected_inr],
+    [150000, 150000, 50000, 1850000],
+  );
+  const plan = strategyPlan();
+  const volumeCollected = plan.bets.reduce((a, b) => a + b.base_collected_inr, 0);
+  check(
+    "deck targets ₹25.6L / ₹52.1L and uplift is not added on top",
+    [
+      plan.base.collected_inr,
+      plan.stretch.collected_inr,
+      plan.base.confirmed_cash_inr,
+      plan.stretch.confirmed_cash_inr,
+      plan.downside_if_conversion_halves.base_collected_inr,
+      plan.downside_if_conversion_halves.stretch_collected_inr,
+      plan.base.collection_uplift_vs_65pct_inr,
+      volumeCollected,
+      plan.bets.find((b) => b.id === "alumni")?.base_collected_inr,
+    ],
+    [2559666, 5211375, 3199583, 5790417, 1279833, 2605688, 479937, 2559666, 1066666],
+  );
 
   // ---------- 5. Copilot tools are grounded in the same engine
   const tool = (await runTool("get_executive_summary", { as_of_date: "2025-04-20" }, s)) as { result: Record<string, unknown> };
   const kp = tool.result.kpis as Record<string, number>;
   check("tool get_executive_summary confirmed cash = 2000000", kp.confirmed_cash_inr, 2000000);
+  const pos = tool.result.cash_position as { outstanding_confirmed_cash_inr: number; cash_collected_inr: number; signed_partnerships: number };
+  const edition = tool.result.next_edition_plan as { base: { collected_inr: number }; stretch: { collected_inr: number } };
+  check(
+    "tool cash position and deck targets are finished totals",
+    [pos.cash_collected_inr, pos.outstanding_confirmed_cash_inr, pos.signed_partnerships, edition.base.collected_inr, edition.stretch.collected_inr],
+    [0, 2000000, 24, 2559666, 5211375],
+  );
   const miss = (await runTool("check_data_availability", { topic: "CAC ad spend" }, s)) as { result: { available: boolean } };
   check("tool check_data_availability(CAC) → not available", miss.result.available, false);
   const riya = (await runTool("get_pipeline_diagnostics", { as_of_date: "2025-04-20", owner_name: "Riya Kapoor" }, s)) as {

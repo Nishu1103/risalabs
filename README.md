@@ -6,14 +6,12 @@
 
 A working command center for a college-fest sponsorship team. It has snapshot-accurate funnel analytics, a pipeline and campaign manager with persistent edits, an execution task tracker, and an embedded **AI Growth Analyst & Copilot**. The copilot answers only from live database state through deterministic tools, and it turns insights into tasks after the user confirms.
 
-<!-- TODO: paste final URLs before submitting -->
-
 | | |
 |---|---|
-| Live Demo (Vercel) | `<your Vercel URL>` |
-| 3-Slide Strategy Deck (PDF) | `<link / PDF>` |
+| Live Demo (Vercel) | https://risalabs-rho.vercel.app |
+| 3-Slide Strategy Deck (PDF) | [Nishant_Kumawat_RISA_Sponsorship_Strategy.pdf](docs/Nishant_Kumawat_RISA_Sponsorship_Strategy.pdf) |
 | Stack | Next.js 15 (App Router, TS strict) · Tailwind 4 · Recharts · Postgres (Supabase) via `pg` · Google Gemini function calling (`@google/genai`) |
-| Tests | `npm run verify` (56 ground-truth assertions) · `npm run test:copilot` (tool-calling loop against a mocked Gemini) · `npm run build` (0 TS / ESLint errors) |
+| Tests | `npm run verify` (59 ground-truth assertions) · `npm run test:copilot` (mocked Gemini tool loop) · `npm run build` |
 
 ---
 
@@ -23,13 +21,13 @@ The 2025 book already qualified enough brands (60 vs a revised goal of 55). It m
 
 ## 2-Minute Reviewer Test Guide
 
-Start at http://localhost:3000 (or the Vercel URL) on snapshot **20 Apr 2025**.
+Start at https://risalabs-rho.vercel.app (or http://localhost:3000) on snapshot **20 Apr 2025**.
 
 1. **Time-travel check.** Click **Feb 28**. The target chip switches to **Sponsor launch plan (40 qualified / 20 confirmed)**. Confirmed partnerships read **8**. March and April stage changes do not appear. (15 Mar is the first day on **Sponsor revised plan, 55 / 28**.)
 2. **Data hygiene check.** Click **Data hygiene · 6 dupes removed**. The modal lists six identical import-retry copies, each raw 2 / kept 1: interactions `SI00110`, `SI00019`, `SI00001`; qualification `BQ0003`; opportunity history `OH00015`, `OH00001`. Sheet totals: interactions 953 → 950, qualification 434 → 433, opportunity history 230 → 228.
 3. **Live mutation and persistence.** Open **Pipeline**, open **Beardo (O001)**, and log a **₹1,00,000** payment. Refresh. Overview **cash collected** moves from ₹0 to ₹1,00,000. Reported confirmed cash stays ₹20,00,000. Scrub to 19 Apr and the payment is not in that snapshot.
 4. **AI Copilot epistemic honesty.** Open **Ask Copilot** and ask, one at a time: *"How much cash is in the bank?"*, *"Did Beardo's activation increase attendees?"*, and *"What is our CAC?"*. Open **Evidence** on each answer. Bank cash is user-logged receipts (₹0 until step 3), separate from ₹20.00L reported cash and ₹2.40L in-kind. Beardo is an observational link to Creator Partners, not an attendance effect. CAC is refused: spend is not in the dataset.
-5. **Closed-loop action and reset.** Ask the copilot to create a task for **Riya Kapoor**. Nothing is written until you click **Confirm & create task**. The task then appears on `/tasks` with an AI badge. Click **Reset to original dataset** and leave the token blank. Cash collected returns to ₹0, confirmed partnerships to 24, opportunities to 58, and the extra task is gone. The four seed tasks come back. `RESET_TOKEN` is unset so reviewers can reset. If you later set that variable, type the token in the dialog; the button sends it as `x-reset-token`.
+5. **Closed-loop action and reset.** Ask the copilot to create a task for **Riya Kapoor**. Nothing is written until you click **Confirm & create task**. The task then appears on `/tasks` with an AI badge. Click **Reset to original dataset**, enter reviewer token `nishant`, and confirm. Cash collected returns to ₹0, confirmed partnerships to 24, opportunities to 58, and the extra task is gone. The four seed tasks come back. A blank or wrong token returns 401, so a visitor cannot wipe logged payments. The historical workbook is only re-read; it is not edited.
 
 ---
 
@@ -148,27 +146,29 @@ Downside multiplies every bet's confirmed cash by 0.5, then applies that scenari
 collected_if_conv_halves = round(sum(confirmed_cash × 0.5) × collect_rate)
 ```
 
-| Scenario | Attempts | Deals | Confirmed cash | Collection rate | Collected before the fest |
+| Scenario | Attempts | Deals | Confirmed cash (reported value) | Collection rate | Collected before the fest |
 |---|---:|---:|---:|---:|---:|
 | 2025 (sourced) | 370 | 24 | ₹20,00,000 | unknown | **₹0 proven** |
-| Base | 120 | 41.2 | ₹31,99,583 | 80% | **₹25,59,666** |
-| Stretch | 179 | 67.8 | ₹57,90,417 | 90% | **₹52,11,375** |
-| Downside, base (conversion × 0.5) | | | | 80% | **₹12,79,833** |
+| Base | 120 | 41.2 | ₹31,99,583 | 80% | **₹25,59,666 (deck ₹25.6L)** |
+| Stretch | 179 | 67.8 | ₹57,90,417 | 90% | **₹52,11,375 (deck ₹52.1L)** |
+| Downside, base (conversion × 0.5) | | | | 80% | **₹12,79,833 (deck ₹12.8L)** |
 | Downside, stretch (conversion × 0.5) | | | | 90% | **₹26,05,688** |
 
 Capacity in the same file: 4 owners × 12 weeks. Base is **0.86** deals per owner-week (41.2 / 48). Stretch is **1.41** (67.8 / 48).
 
-### Five bets, ranked by ₹ impact
+### Five bets
 
-Framework: **₹ impact × confidence ÷ effort**. `model.py` does not store numeric confidence or effort weights, so it does not emit a composite score. Rank below is by the only rupee term the file computes (base confirmed cash). Confidence and effort are the bet note in that file. Collection discipline is ranked on its own unit, incremental cash versus the 65% no-policy rate, so it is not sorted against confirmed-cash bets.
+The deck title says “₹ impact × confidence ÷ effort”. `strategy/model.py` does not store numeric confidence or effort, so this README does not print a composite score. Confidence and effort below are **qualitative**. The rupee column is **cash collected** (confirmed cash × that scenario’s collection rate), which is what the slides show. It is not confirmed sponsorship value.
 
-| Rank | Bet | Prioritization (₹ impact × confidence ÷ effort) | Decision | Expected cash, base vs stretch | Primary risk / threshold |
-|---|---|---|---|---|---|
-| 1 | Alumni and creator intro sprint | Impact ₹13,33,333. Confidence: 2025 intros 17/30 (SC02 8/9 + SC05 9/21), noted as 57%, haircut to 40% (A). Effort: 40 intros base, 60 stretch (A). | Double down | ₹13,33,333 → ₹22,00,000 confirmed | Haircut from 17/30 to 40%. Stretch also assumes a ₹1,10,000 ticket. |
-| 2 | Partner-gets-partner referrals | Impact ₹9,00,000. Confidence: sourced warm conversion 50% minus a 5pt haircut = 45% (A). Effort: 24 intros (1 per 2025 partner); stretch 48 (2 per partner, A). | Double down | ₹9,00,000 → ₹19,80,000 confirmed | Depends on partners actually introducing someone. Ticket ₹1,00,000 base, ₹1,10,000 stretch (A). |
-| 3 | Inbound sponsor page + deck | Impact ₹7,87,500. Confidence: 2025 inbound 7/18 (SC04), noted as 39%, run at 35% (A). Effort: 30 inbound base, 45 stretch (A). | Double down | ₹7,87,500 → ₹13,12,500 confirmed | Base ticket is ₹90,000, below the ₹1,00,000 sourced average. Volume is assumed. |
-| 4 | Cash-collection discipline | Impact is incremental collected cash, not new deals: ₹4,79,937 base, ₹14,47,604 stretch. Confidence: 2025 collection is unobserved (₹0 receipts). Effort: invoice chase on the book above, not more attempts. | Double down | +₹4,79,937 at 80% vs +₹14,47,604 at 90%, both versus a 65% no-policy rate (A) | If nobody chases invoices, collected cash stays at the 65% case. This bet adds ₹0 of confirmed value. |
-| 5 | Warm re-route of stalled cold opps | Impact ₹1,78,750. Confidence: 15% close once a warm path exists (A); no 2025 cold deal closed. Effort: the 26 sourced open opps, same count in stretch. | Pivot | ₹1,78,750 → ₹2,97,917 confirmed | 15% base / 25% stretch are assumptions. Average ticket ₹55,000. Fails if no warm path is found. |
+The four new-sponsorship bets sum to the deck targets: base **₹25,59,666 (₹25.6L)** and stretch **₹52,11,375 (₹52.1L)**. Cash-collection discipline is the difference versus a 65% no-policy rate (**₹4,79,937** base, **₹14,47,604** stretch). That uplift is already inside ₹25.6L / ₹52.1L. Adding it again would double-count collection as new sponsorship revenue.
+
+| Order on the deck | Bet | Collected cash, base → stretch | Confirmed cash (not the target) | Confidence (qualitative) | Effort (qualitative) | Decision |
+|---|---|---|---|---|---|---|
+| 1 | Alumni and creator intro sprint | ₹10,66,666 → ₹19,80,000 | ₹13,33,333 → ₹22,00,000 | 2025 intros 17/30, haircut to 40% | 40 intros base, 60 stretch | Double down |
+| 2 | Cash-collection discipline | +₹4,79,937 → +₹14,47,604 versus 65%, already inside the totals above | ₹0 new confirmed value | 2025 receipts are ₹0, so the rate is unobserved | Invoice chase, no extra attempts | Double down |
+| 3 | Partner-gets-partner referrals | ₹7,20,000 → ₹17,82,000 | ₹9,00,000 → ₹19,80,000 | Sourced warm 50% minus 5 points = 45% | 24 intros base, 48 stretch | Double down |
+| 4 | Inbound sponsor page and deck | ₹6,30,000 → ₹11,81,250 | ₹7,87,500 → ₹13,12,500 | 2025 inbound 7/18, run at 35% | 30 inbound base, 45 stretch | Double down |
+| 5 | Warm re-route of stalled cold opps | ₹1,43,000 → ₹2,68,125 | ₹1,78,750 → ₹2,97,917 | No 2025 cold deal closed; 15% / 25% are assumptions | The 26 sourced open opps | Pivot |
 
 **Kill** is not a sixth bet. It is the live campaign rule on cold email: SC01 has 224 attempts and 0 confirmed, which fires Kill (attempts ≥ 40, 0 confirmed, meeting rate under 15%). Those attempts are not repeated in the model.
 
@@ -187,7 +187,7 @@ Mumbai is the city choice because it is the media and distribution hub for consu
 npm install
 cp .env.example .env.local        # add DATABASE_URL and GEMINI_API_KEY
 npm run seed                      # applies supabase/schema.sql and loads the xlsx
-npm run verify                    # 55 ground-truth checks
+npm run verify                    # ground-truth checks, including the deck targets
 npm run test:copilot              # copilot loop checks (no API key needed)
 npm run dev                       # http://localhost:3000
 ```
@@ -198,7 +198,7 @@ npm run dev                       # http://localhost:3000
 
 **Vercel**: import the repo → add `DATABASE_URL`, `GEMINI_API_KEY`, and optionally `GEMINI_MODEL` and `RESET_TOKEN` → deploy. `next.config.ts` sets `outputFileTracingRoot` and traces `data/Sponsor Dataset.xlsx` into `/api/reset`, so reset works on serverless.
 
-**Reset**: leave `RESET_TOKEN` empty so a reviewer can reset with the token field blank. The dialog still sends `x-reset-token` when a token is typed, and the API rejects a wrong token when the variable is set.
+**Reset**: set `RESET_TOKEN=nishant` (the token printed on the strategy deck). The dialog sends it as `x-reset-token`. A missing or wrong token returns 401. If the variable is left empty, the server still requires `nishant`, so the public demo cannot be wiped by an empty POST. Reset reloads `Sponsor Dataset.xlsx`. It does not modify that file. Day-to-day edits and payments stay until an authorized reset.
 
 ## 8. Tools, plans, and what was reused, modified, and verified
 
@@ -210,24 +210,26 @@ RISA's ask: name the tools and plans, link the sources, and say what was reused,
 | Supabase Postgres + `pg` | Free tier, transaction pooler port 6543 | System of record | **Reused** Supabase and `node-postgres`. **Modified** `supabase/schema.sql` for append-only histories, payments, tasks, and hygiene logs. **Verified** by `npm run seed` and `npm run verify` against the live database (180 brands, 270 contacts, 58 opportunities, 6 hygiene rows). |
 | Vercel | Hobby / free tier | Hosting | **Reused** the Next.js deploy path. **Modified** `next.config.ts` so the tracing root is this repo and the xlsx is included in the reset function. **Verified** by a production `next build` whose reset trace contains `Sponsor Dataset.xlsx`. |
 | Google AI Studio / Gemini API (`@google/genai`) | Free tier | Copilot function calling | **Reused** the SDK. **Modified** the client to API `v1beta`. Default model is `gemini-3.8-flash`, then `gemini-3-flash-preview`, then `gemini-3.1-flash-lite`. Leave `GEMINI_MODEL` unset. **Verified live**: `gemini-2.5-flash` and `gemini-2.0-flash` return 404 ("no longer available"). A 429 or 504 on the first step falls through. The route stops at 48 seconds and returns the tool results it already has. |
-| Claude and Cursor | AI pair-programming | Code, tests, and this README | **Reused** as a drafting partner only. **Modified** by hand: business logic, SQL, and dataset math are in `lib/analytics.ts`, `lib/dataset.ts`, and `strategy/model.py`. **Verified** independently by `scripts/verify.ts` (56/56), a pandas cross-check of the same xlsx, `npm run test:copilot`, and 60 live HTTP checks (CRUD, history versioning, as-of isolation, bad dates → 400, reset without token → 401). |
+| Claude and Cursor | AI pair-programming | Code, tests, and this README | **Reused** as a drafting partner only. **Modified** by hand: business logic, SQL, and dataset math are in `lib/analytics.ts`, `lib/dataset.ts`, and `strategy/model.py`. **Verified** by `scripts/verify.ts` (59/59 on this pass) and `npm run test:copilot`. |
 | ExcelJS | Open source | Read `Sponsor Dataset.xlsx` | **Reused** to parse the workbook. **Modified** so naive Excel times are read as IST. **Verified** by the dedupe counts in `verify.ts` (953/950, 434/433, 230/228). |
 
 ## 9. Verification and live QA
 
-| Check | Result |
+| Check | Result on this pass |
 |---|---|
-| `npx tsc --noEmit`, `npm run lint`, `npm run build` | Exit 0. Production build traces `data/Sponsor Dataset.xlsx` into `/api/reset`. |
-| `npm run verify` | **56/56**. Ground truth on 20 Apr 2025, Feb 28 launch plan with 8 confirmed and zero March/April leakage, 14 Mar launch vs 15 Mar revised, in-memory mutation that does not leak into 19 Apr, copilot tools (`calculate`, CAC unavailable), and Riya Kapoor's stalled negotiating book at ₹3,60,000 over 30–47 days. |
-| `npm run test:copilot` | Pass. Mocked multi-step tool loop, matching function-response IDs, SC01 = 224 attempts / 0 confirmed / Kill, no task written, default `gemini-3.8-flash`, fallback to `gemini-3-flash-preview` on 404. |
-| Live QA | **60** HTTP checks: opportunity history appends and stays invisible on the day before `effective_date`; a ₹1,00,000 payment on O001 persists in cash collected; campaigns, interactions, brands, and tasks CRUD; invalid JSON and impossible dates return 400; with `RESET_TOKEN` unset, reset restores cash ₹0, 24 confirmed, 58 opportunities, 60 qualified (a wrong token returns 401 only when that variable is set). **6** live Gemini calls on `gemini-3.1-flash-lite` (before the default moved to `gemini-3.8-flash`) covered the channel gap (24/28, cold = 0 deals and 87% of attempts), bank receipts (₹0 vs ₹20.00L reported cash and ₹2.40L in-kind), Beardo with no causal attendee claim, CAC refusal, a Riya Kapoor task that stayed pending until confirm, and ₹1,50,000 collected after that payment was logged. |
+| `npx tsc --noEmit`, `npm run lint`, `npm run build` | Exit 0. |
+| `npm run verify` | **59/59**. Includes the 20 Apr ground truth, 28 Feb with no future leakage, an in-memory partial payment (₹1,50,000 collected and ₹50,000 outstanding on O001), and the deck targets ₹25,59,666 / ₹52,11,375 with the collection uplift not added on top. The database was only read. |
+| `npm run test:copilot` | All checks passed. Mocked tool loop, SC01 = 224 attempts / 0 confirmed / Kill, no task written, default `gemini-3.8-flash`, fallback to `gemini-3-flash-preview` on 404. |
+| Persistence, then restore | A ₹1,00,000 payment on O001 was committed and read back as ₹1,00,000. `resetDatabase()` then restored 0 payments and 58 opportunities. Reset with no token returned 401. Reset with a wrong token returned 401. |
+
+An earlier live HTTP and Gemini pass is not repeated here, so this README does not treat those results as part of this run.
 
 ## 10. Known limitations
 
-- Single-tenant demo: no auth, so anyone with the link can edit or reset. Leave `RESET_TOKEN` empty for reviewers. If you set it, the reset dialog sends `x-reset-token`.
+- Single-tenant demo: no login, so anyone with the link can log a payment or edit a stage. Those writes persist. Reset, the one destructive call, requires reviewer token `nishant`.
 - Campaign attribution is the originating campaign recorded on the opportunity, which is an association, not causation.
 - The funnel stages are independent brand populations, not a strictly nested cohort, as the source guide warns.
 - Budgets and the strategy's collection rates, haircuts, and attempt volumes are assumptions. The source contains no spend or payment data. City articles in section 6 are not model inputs.
-- `strategy/model.py` ranks bets by rupee impact. It does not multiply numeric confidence and effort into a second score.
+- Confidence and effort on the five bets are qualitative. There is no numeric Impact × Confidence ÷ Effort score.
 - Analytics load the full (small) dataset per request, which is fine for thousands of rows. Larger data would move into SQL views.
 - Copilot quality depends on the Gemini model. Grounding is enforced by tools and the prompt, but an LLM can still mis-add a total. The Evidence panel is the check, and the prompt forbids a total that did not come back from a tool or from `calculate`.

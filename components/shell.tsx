@@ -224,7 +224,7 @@ function TopBar() {
             value={resetToken}
             onChange={(e) => setResetToken(e.target.value)}
             autoComplete="off"
-            placeholder="Required only when RESET_TOKEN is set on the server"
+            placeholder="Reviewer token from the README"
             className="mt-1 w-full rounded-lg border border-slate-200 px-2.5 py-1.5 text-[13px] text-slate-800 outline-none focus:border-slate-400"
           />
         </label>

@@ -4,6 +4,7 @@
  * answer must come from one of these tool results (computed by lib/analytics.ts on live DB state).
  */
 import { computeSnapshot, cutoffFor, ms, OPEN_STAGES } from "./analytics";
+import { strategyPlan } from "./strategy-plan";
 import type { DbState } from "./state";
 
 export const DEFAULT_AS_OF = "2025-04-20";
@@ -291,9 +292,32 @@ export async function runTool(name: string, args: Record<string, unknown>, state
           funnel: s.funnel.map((f) => ({ stage: f.label, brands: f.count, note: f.note, conv_from_prev: f.conv_from_prev })),
           cycle_time_days: s.cycle_time,
           diagnostics: s.diagnostics,
+          cash_position: {
+            reported_confirmed_cash_inr: s.kpis.confirmed_cash_inr,
+            reported_in_kind_inr: s.kpis.confirmed_in_kind_inr,
+            signed_partnerships: s.kpis.confirmed_partnerships,
+            signed_cash_deals: s.kpis.confirmed_cash_count,
+            cash_collected_inr: s.kpis.cash_collected_inr,
+            outstanding_confirmed_cash_inr: s.opportunities
+              .filter((o) => o.stage === "partner_confirmed" && o.support_type === "cash")
+              .reduce((a, o) => a + Math.max(0, o.confirmed_value_inr - o.cash_collected_inr), 0),
+            partial_payments: s.opportunities
+              .filter((o) => o.stage === "partner_confirmed" && o.support_type === "cash" && o.cash_collected_inr > 0 && o.cash_collected_inr < o.confirmed_value_inr)
+              .map((o) => ({
+                id: o.opportunity_id,
+                brand: o.brand_name,
+                confirmed_inr: o.confirmed_value_inr,
+                collected_inr: o.cash_collected_inr,
+                outstanding_inr: o.confirmed_value_inr - o.cash_collected_inr,
+              })),
+            copy_exactly: "Quote these integers. Do not subtract or add them yourself.",
+          },
+          next_edition_plan: strategyPlan(),
           labels: {
             confirmed_cash_inr: "Reported confirmed value (source) — NOT bank receipt",
             cash_collected_inr: "Sum of payments logged by users in the app (source has no receipts)",
+            outstanding_confirmed_cash_inr: "Signed cash still not logged as received. Finished total.",
+            next_edition_plan: "Assumption. collected_inr is the deck target. Do not add collection_uplift on top of it.",
           },
           data_hygiene: `${s.hygiene.duplicates_removed} exact duplicate source rows removed on ingest`,
           note: outOfRange,
@@ -367,6 +391,15 @@ export async function runTool(name: string, args: Record<string, unknown>, state
             proposed_inr: o.proposed_value_inr,
             confirmed_inr: o.confirmed_value_inr,
             cash_collected_inr: o.cash_collected_inr,
+            outstanding_inr: o.stage === "partner_confirmed" && o.support_type === "cash" ? Math.max(0, o.confirmed_value_inr - o.cash_collected_inr) : null,
+            payment_status:
+              o.stage !== "partner_confirmed" || o.support_type !== "cash"
+                ? null
+                : o.cash_collected_inr <= 0
+                  ? "unpaid"
+                  : o.cash_collected_inr < o.confirmed_value_inr
+                    ? "partial"
+                    : "paid",
             owner: o.owner_name,
             campaign: o.campaign_name,
             days_in_stage: o.days_in_stage,
